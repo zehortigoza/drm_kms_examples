@@ -35,6 +35,17 @@ void drm_close(int fd)
 	close(fd);
 }
 
+static void _delete_buffer(int drm_fd, struct modeset_buf *buf)
+{
+	struct drm_mode_destroy_dumb dreq;
+
+	munmap(buf->map, buf->size);
+
+	memset(&dreq, 0, sizeof(dreq));
+	dreq.handle = buf->handle;
+	drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+}
+
 void drm_cleanup(struct modeset_dev *list)
 {
 	while (list) {
@@ -50,16 +61,11 @@ void drm_cleanup(struct modeset_dev *list)
 		drmModeFreeCrtc(it->saved_crtc);
 
 		for (i = 0; i < (sizeof(list->buffers) / sizeof(list->buffers[0])); i++) {
-			struct drm_mode_destroy_dumb dreq;
-			struct modeset_buf *buf = &it->buffers[i];
-
-			munmap(buf->map, buf->size);
-			drmModeRmFB(it->drm_fd, buf->fb);
-
-			memset(&dreq, 0, sizeof(dreq));
-			dreq.handle = buf->handle;
-			drmIoctl(it->drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+			drmModeRmFB(it->drm_fd, it->buffers[i].fb);
+			_delete_buffer(it->drm_fd, &it->buffers[i]);
 		}
+
+		_delete_buffer(it->drm_fd, &it->cursor);
 
 		free(it);
 	}
@@ -127,7 +133,7 @@ static int _find_crtc(struct modeset_dev *list, drmModeRes *res, drmModeConnecto
 	return -ENOENT;
 }
 
-static int _create_fb(struct modeset_dev *dev, struct modeset_buf *buf)
+static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint32_t w, uint32_t h, bool map_fb)
 {
 	struct drm_mode_create_dumb creq;
 	struct drm_mode_map_dumb mreq;
@@ -135,8 +141,8 @@ static int _create_fb(struct modeset_dev *dev, struct modeset_buf *buf)
 	int ret;
 
 	memset(&creq, 0, sizeof(creq));
-	creq.width = dev->mode.hdisplay;
-	creq.height = dev->mode.vdisplay;
+	creq.width = w;
+	creq.height = h;
 	creq.bpp = 32;
 
 	ret = drmIoctl(dev->drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq);
@@ -150,12 +156,14 @@ static int _create_fb(struct modeset_dev *dev, struct modeset_buf *buf)
 	buf->width = creq.width;
 	buf->height = creq.height;
 
-	ret = drmModeAddFB(dev->drm_fd, buf->width, buf->height, 24, creq.bpp,
-					   buf->stride, buf->handle, &buf->fb);
-	if (ret) {
-		fprintf(stderr, "cannot create framebuffer (%d): %m\n", errno);
-		ret = -errno;
-		goto err_map_to_fb;
+	if (map_fb) {
+		ret = drmModeAddFB(dev->drm_fd, buf->width, buf->height, 24, creq.bpp,
+						   buf->stride, buf->handle, &buf->fb);
+		if (ret) {
+			fprintf(stderr, "cannot create framebuffer (%d): %m\n", errno);
+			ret = -errno;
+			goto err_map_to_fb;
+		}
 	}
 
 	memset(&mreq, 0, sizeof(mreq));
@@ -175,11 +183,12 @@ static int _create_fb(struct modeset_dev *dev, struct modeset_buf *buf)
 		goto err_mmap;
 	}
 
-	memset(buf->map, 0, buf->size);
+	memset(buf->map, 0x77, buf->size);
 	return 0;
 
 err_mmap:
-	drmModeRmFB(dev->drm_fd, buf->fb);
+	if (map_fb)
+		drmModeRmFB(dev->drm_fd, buf->fb);
 err_map_to_fb:
 	memset(&dreq, 0, sizeof(dreq));
 	dreq.handle = buf->handle;
@@ -191,10 +200,13 @@ static int _create_fbs(struct modeset_dev *dev)
 {
 	unsigned i;
 
-	for (i = 0; i < 2; i++) {
-		if (_create_fb(dev, &dev->buffers[i]))
+	for (i = 0; i < (sizeof(dev->buffers) / sizeof(dev->buffers[0])); i++) {
+		if (_create_buffer(dev, &dev->buffers[i], dev->mode.hdisplay, dev->mode.vdisplay, true))
 			return -1;
 	}
+
+	if (_create_buffer(dev, &dev->cursor, 64, 64, false))
+		return -1;
 
 	return 0;
 }

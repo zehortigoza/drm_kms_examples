@@ -27,6 +27,7 @@ struct modeset_dev {
 	struct modeset_dev *next;
 
 	struct modeset_buf buffers[2];
+	struct modeset_buf cursor;
 
 	/* Display mode that we want to use */
 	drmModeModeInfo mode;
@@ -47,7 +48,7 @@ struct pixel {
 	uint8_t blue;
 	uint8_t green;
 	uint8_t red;
-	uint8_t padding;
+	uint8_t pad_or_alpha;
 };
 
 int drm_open(const char *drm_device);
