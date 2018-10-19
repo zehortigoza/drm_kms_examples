@@ -5,7 +5,7 @@
 
 int main()
 {
-	int fd;
+	int fd, r;
 	struct modeset_dev *list, *iter;
 
 	fd = drm_open(DEFAULT_DRM_DEVICE);
@@ -33,6 +33,22 @@ int main()
 				p->blue = x < (buf->width / 2) ? 255 : 0;
 			}
 		}
+	}
+
+	// get properties
+	for (iter = list; iter; iter = iter->next) {
+		drmModeObjectPropertiesPtr props;
+		unsigned i;
+
+		printf("CRTC %d\n", iter->crtc);
+		props = drmModeObjectGetProperties(iter->drm_fd, iter->crtc, DRM_MODE_OBJECT_CRTC);
+		for (i = 0; i < props->count_props; i++) {
+			drmModePropertyPtr prop = drmModeGetProperty(iter->drm_fd, props->props[i]);
+			printf("\tname=%s\n", prop->name);
+			drmModeFreeProperty(prop);
+		}
+
+		drmModeFreeObjectProperties(props);
 	}
 
 	// white cursor
@@ -80,6 +96,9 @@ int main()
 				p->pad_or_alpha = 255;
 			}
 		}
+
+		r = drmModeDirtyFB(iter->drm_fd, iter->buffers->fb, NULL, 0);
+		printf("drmModeDirtyFB() r=%i\n", r);
 	}
 	printf("Green cursor\n");
 	printf("Press enter to continue...\n");
@@ -97,14 +116,17 @@ int main()
 				// 32bpp = 4bytes
 				uint32_t pixel_offset = line_offset + (x * 4);
 				struct pixel *p = (struct pixel *)&(cursor->map[pixel_offset]);
-				p->red = 0;
+				p->red = x >= (cursor->width / 2) ? 255 : 0;
 				p->green = 0;
-				p->blue = 255;
+				p->blue = 0;
 				p->pad_or_alpha = 255;
 			}
 		}
+
+		r = drmModeDirtyFB(iter->drm_fd, iter->buffers->fb, NULL, 0);
+		printf("drmModeDirtyFB() r=%i\n", r);
 	}
-	printf("Blue cursor\n");
+	printf("Half red half black cursor\n");
 	printf("Press enter to continue...\n");
 	getchar();
 
@@ -120,14 +142,14 @@ int main()
 				// 32bpp = 4bytes
 				uint32_t pixel_offset = line_offset + (x * 4);
 				struct pixel *p = (struct pixel *)&(cursor->map[pixel_offset]);
-				p->red = 0;
-				p->green = 0;
-				p->blue = 255;
 				p->pad_or_alpha = 125;
 			}
 		}
+
+		r = drmModeDirtyFB(iter->drm_fd, iter->buffers->fb, NULL, 0);
+		printf("drmModeDirtyFB() r=%i\n", r);
 	}
-	printf("Blue cursor with 50%% of transparency\n");
+	printf("Half blue half green with 50%% of transparency\n");
 	printf("Press enter to continue...\n");
 	getchar();
 

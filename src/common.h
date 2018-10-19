@@ -5,6 +5,8 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 
+#define UNUSED __attribute__((unused))
+
 #define DEFAULT_DRM_DEVICE "/dev/dri/card0"
 
 struct modeset_buf {
@@ -26,7 +28,7 @@ struct modeset_buf {
 struct modeset_dev {
 	struct modeset_dev *next;
 
-	struct modeset_buf buffers[2];
+	struct modeset_buf buffers[3];
 	struct modeset_buf cursor;
 
 	/* Display mode that we want to use */
@@ -56,3 +58,4 @@ void drm_cleanup(struct modeset_dev *list);
 void drm_close(int fd);
 
 struct modeset_dev *drm_modeset(int fd);
+struct modeset_dev *drm_modeset_with_mode(int fd, const drmModeModeInfo *mode);

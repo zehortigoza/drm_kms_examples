@@ -211,8 +211,13 @@ static int _create_fbs(struct modeset_dev *dev)
 	return 0;
 }
 
+#define WIDTH 1024
+
 static int _setup_conn(struct modeset_dev *list, drmModeRes *res, drmModeConnector *conn, struct modeset_dev *dev)
 {
+	int i;
+	drmModeModeInfoPtr found;
+
 	if (conn->connection != DRM_MODE_CONNECTED) {
 		printf("ignoring unused connector %u\n", conn->connector_id);
 		return -ENOENT;
@@ -223,10 +228,25 @@ static int _setup_conn(struct modeset_dev *list, drmModeRes *res, drmModeConnect
 		return -EFAULT;
 	}
 
+	if (dev->mode.clock)
+		goto jump_lookup;
+
+	found = &conn->modes[0];
+	printf("Modes found: %d\n", conn->count_modes);
+	for (i = 0; i < conn->count_modes; i++) {
+		printf("\t%ux%ux@%d\n", conn->modes[i].hdisplay, conn->modes[i].vdisplay, conn->modes[i].vrefresh);
+		if (conn->modes[i].hdisplay == WIDTH) {
+			found = &conn->modes[i];
+			printf("\tpicking this mode\n");
+			break;
+		}
+	}
 	/* copy the mode information into our device structure */
-	memcpy(&dev->mode, &conn->modes[0], sizeof(dev->mode));
-	printf("mode for connector %u is %ux%u\n", conn->connector_id,
-			conn->modes[0].hdisplay, conn->modes[0].vdisplay);
+	memcpy(&dev->mode, found, sizeof(dev->mode));
+
+jump_lookup:
+	printf("mode for connector %u is %ux%u refresh %d\n", conn->connector_id,
+			dev->mode.hdisplay, dev->mode.vdisplay, dev->mode.vrefresh);
 
 	/* find a crtc for this connector */
 	if (_find_crtc(list, res, conn, dev)) {
@@ -258,7 +278,7 @@ static void modeset_dev_append(struct modeset_dev **list, struct modeset_dev *it
 	l->next = item;
 }
 
-struct modeset_dev *drm_modeset(int fd)
+struct modeset_dev *drm_modeset_with_mode(int fd, const drmModeModeInfo *mode)
 {
 	drmModeRes *res;
 	int i;
@@ -290,6 +310,8 @@ struct modeset_dev *drm_modeset(int fd)
 
 		dev->conn = conn->connector_id;
 		dev->drm_fd = fd;
+		if (mode)
+			memcpy(&dev->mode, mode, sizeof(*mode));
 		if (_setup_conn(list, res, conn, dev)) {
 			free(dev);
 			drmModeFreeConnector(conn);
@@ -317,4 +339,9 @@ struct modeset_dev *drm_modeset(int fd)
 	}
 
 	return list;
+}
+
+struct modeset_dev *drm_modeset(int fd)
+{
+	return drm_modeset_with_mode(fd, NULL);
 }
