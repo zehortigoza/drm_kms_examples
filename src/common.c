@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <sys/mman.h>
 
+#include <drm_fourcc.h>
+
 int drm_open(const char *drm_device)
 {
 	int fd;
@@ -135,6 +137,7 @@ static int _find_crtc(struct modeset_dev *list, drmModeRes *res, drmModeConnecto
 
 static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint32_t w, uint32_t h, bool map_fb)
 {
+	uint32_t handles[4] = {0}, pitches[4] = {0}, offsets[4] = {0};
 	struct drm_mode_create_dumb creq;
 	struct drm_mode_map_dumb mreq;
 	struct drm_mode_destroy_dumb dreq;
@@ -157,8 +160,12 @@ static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint
 	buf->height = creq.height;
 
 	if (map_fb) {
-		ret = drmModeAddFB(dev->drm_fd, buf->width, buf->height, 24, creq.bpp,
-						   buf->stride, buf->handle, &buf->fb);
+		handles[0] = buf->handle;
+		pitches[0] = buf->stride;
+
+		ret = drmModeAddFB2(dev->drm_fd, buf->width, buf->height,
+							DRM_FORMAT_XRGB8888, handles, pitches, offsets,
+							&buf->fb, 0);
 		if (ret) {
 			fprintf(stderr, "cannot create framebuffer (%d): %m\n", errno);
 			ret = -errno;
