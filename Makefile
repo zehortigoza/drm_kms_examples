@@ -2,7 +2,7 @@ CFLAGS	= -g -Wall -Wextra -s -O3
 LIBS	= `pkg-config --cflags --libs libdrm`
 COMMON = src/common.o src/debugfs.o
 
-all: frontbuffer_drawing.bin page_flip.bin page_flip2.bin page_flip3.bin page_flip4.bin page_flip3_psr2.bin cursor.bin page_flip_force_resolution.bin frontbuffer_drawing2.bin frontbuffer_drawing3.bin frontbuffer_drawing3_psr2.bin read_debugfs.bin mockup_psr2_igt_test.bin
+all: frontbuffer_drawing.bin page_flip.bin page_flip2.bin page_flip3.bin page_flip3_psr2.bin cursor.bin page_flip_force_resolution.bin frontbuffer_drawing2.bin frontbuffer_drawing3.bin frontbuffer_drawing3_psr2.bin read_debugfs.bin
 
 frontbuffer_drawing.bin: src/frontbuffer_drawing.o $(COMMON)
 	$(CC) $(CFLAGS) $(LIBS) -o $@ $^
@@ -16,14 +16,8 @@ page_flip2.bin: src/page_flip2.o $(COMMON)
 page_flip3.bin: src/page_flip3.o $(COMMON)
 	$(CC) $(CFLAGS) $(LIBS) -o $@ $^
 
-page_flip4.bin: src/page_flip4.o $(COMMON)
-	$(CC) $(CFLAGS) $(LIBS) -o $@ $^
-
 page_flip3_psr2.bin: src/page_flip3_psr2.o $(COMMON)
 	$(CC) $(CFLAGS) $(LIBS) -o $@ $^
-
-mockup_psr2_igt_test.bin: src/mockup_psr2_igt_test.o $(COMMON)
-	$(CC) $(CFLAGS) $(LIBS) -pthread -o $@ $^
 
 cursor.bin: src/cursor.o $(COMMON)
 	$(CC) $(CFLAGS) $(LIBS) -o $@ $^
