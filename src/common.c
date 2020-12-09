@@ -14,6 +14,10 @@
 
 static drm_intel_bufmgr *bufmgr;
 
+//#define TILING DRM_FORMAT_MOD_LINEAR
+//#define TILING I915_FORMAT_MOD_X_TILED
+#define TILING I915_FORMAT_MOD_Y_TILED
+
 int drm_open(const char *drm_device)
 {
 	int fd;
@@ -138,6 +142,7 @@ static int _find_crtc(struct modeset_dev *list, drmModeRes *res, drmModeConnecto
 static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint32_t w, uint32_t h, bool map_fb)
 {
 	uint32_t handles[4] = {0}, pitches[4] = {0}, offsets[4] = {0};
+	uint64_t modifiers[4] = {0};
 	unsigned long stride, size;
 	drm_intel_bo *bo;
 	int ret;
@@ -145,7 +150,29 @@ static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint
 	stride = w * 32;
 	size = stride * h;
 
-	bo = drm_intel_bo_alloc(bufmgr, "buffer", size, 0);
+	if (TILING == DRM_FORMAT_MOD_LINEAR) {
+		bo = drm_intel_bo_alloc(bufmgr, "buffer", size, 0);
+	} else {
+		uint32_t tiling;
+
+		stride = 0;
+
+		switch (TILING) {
+		case I915_FORMAT_MOD_X_TILED:
+			tiling = 1;
+			break;
+		case I915_FORMAT_MOD_Y_TILED:
+			tiling = 2;
+			break;
+		default:
+			fprintf(stderr, "tiling not handled yet\n");
+			tiling = 0;
+		}
+
+		bo = drm_intel_bo_alloc_tiled(bufmgr, "buffer tiled", w, h, 4, &tiling, &stride, 0);
+		printf("tiled buffer stride=%lu\n", stride);
+	}
+
 	if (!bo) {
 		fprintf(stderr, "cannot create buffer (%d): %m\n", errno);
 		return -errno;
@@ -160,10 +187,11 @@ static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint
 	if (map_fb) {
 		handles[0] = buf->handle;
 		pitches[0] = buf->stride;
+		modifiers[0] = TILING;
 
-		ret = drmModeAddFB2(dev->drm_fd, buf->width, buf->height,
-							DRM_FORMAT_XRGB8888, handles, pitches, offsets,
-							&buf->fb, 0);
+		ret = drmModeAddFB2WithModifiers(dev->drm_fd, buf->width, buf->height,
+						 DRM_FORMAT_XRGB8888, handles, pitches, offsets,
+						 modifiers, &buf->fb, DRM_MODE_FB_MODIFIERS);
 		if (ret) {
 			fprintf(stderr, "cannot create framebuffer (%d): %m\n", errno);
 			ret = -errno;
