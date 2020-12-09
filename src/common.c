@@ -139,7 +139,8 @@ static int _find_crtc(struct modeset_dev *list, drmModeRes *res, drmModeConnecto
 	return -ENOENT;
 }
 
-static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint32_t w, uint32_t h, bool map_fb)
+static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf,
+			  uint32_t w, uint32_t h, bool change_buffer_to_fb, uint64_t tiling)
 {
 	uint32_t handles[4] = {0}, pitches[4] = {0}, offsets[4] = {0};
 	uint64_t modifiers[4] = {0};
@@ -150,26 +151,29 @@ static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint
 	stride = w * 32;
 	size = stride * h;
 
-	if (TILING == DRM_FORMAT_MOD_LINEAR) {
+	if (tiling == DRM_FORMAT_MOD_LINEAR) {
+		printf("DRM_FORMAT_MOD_LINEAR\n");
 		bo = drm_intel_bo_alloc(bufmgr, "buffer", size, 0);
 	} else {
-		uint32_t tiling;
+		uint32_t t;
 
 		stride = 0;
 
-		switch (TILING) {
+		switch (tiling) {
 		case I915_FORMAT_MOD_X_TILED:
-			tiling = 1;
+			printf("I915_FORMAT_MOD_X_TILED\n");
+			t = 1;
 			break;
 		case I915_FORMAT_MOD_Y_TILED:
-			tiling = 2;
+			printf("I915_FORMAT_MOD_Y_TILED\n");
+			t = 2;
 			break;
 		default:
 			fprintf(stderr, "tiling not handled yet\n");
-			tiling = 0;
+			t = 0;
 		}
 
-		bo = drm_intel_bo_alloc_tiled(bufmgr, "buffer tiled", w, h, 4, &tiling, &stride, 0);
+		bo = drm_intel_bo_alloc_tiled(bufmgr, "buffer tiled", w, h, 4, &t, &stride, 0);
 		printf("tiled buffer stride=%lu\n", stride);
 	}
 
@@ -184,7 +188,7 @@ static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint
 	buf->height = h;
 	buf->bo = bo;
 
-	if (map_fb) {
+	if (change_buffer_to_fb) {
 		handles[0] = buf->handle;
 		pitches[0] = buf->stride;
 		modifiers[0] = TILING;
@@ -211,7 +215,7 @@ static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint
 	return 0;
 
 err_mmap:
-	if (map_fb)
+	if (change_buffer_to_fb)
 		drmModeRmFB(dev->drm_fd, buf->fb);
 err_map_to_fb:
 	drm_intel_bo_unreference(bo);
@@ -223,11 +227,11 @@ static int _create_fbs(struct modeset_dev *dev)
 	unsigned i;
 
 	for (i = 0; i < (sizeof(dev->buffers) / sizeof(dev->buffers[0])); i++) {
-		if (_create_buffer(dev, &dev->buffers[i], dev->mode.hdisplay, dev->mode.vdisplay, true))
+		if (_create_buffer(dev, &dev->buffers[i], dev->mode.hdisplay, dev->mode.vdisplay, true, TILING))
 			return -1;
 	}
 
-	if (_create_buffer(dev, &dev->cursor, 64, 64, false))
+	if (_create_buffer(dev, &dev->cursor, 64, 64, false, DRM_FORMAT_MOD_LINEAR))
 		return -1;
 
 	return 0;
