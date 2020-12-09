@@ -10,6 +10,10 @@
 
 #include <drm_fourcc.h>
 
+#include "intel_bufmgr.h"
+
+static drm_intel_bufmgr *bufmgr;
+
 int drm_open(const char *drm_device)
 {
 	int fd;
@@ -34,18 +38,14 @@ int drm_open(const char *drm_device)
 
 void drm_close(int fd)
 {
+	drm_intel_bufmgr_destroy(bufmgr);
 	close(fd);
 }
 
 static void _delete_buffer(int drm_fd, struct modeset_buf *buf)
 {
-	struct drm_mode_destroy_dumb dreq;
-
-	munmap(buf->map, buf->size);
-
-	memset(&dreq, 0, sizeof(dreq));
-	dreq.handle = buf->handle;
-	drmIoctl(drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+	drm_intel_gem_bo_unmap_gtt(buf->bo);
+	drm_intel_bo_unreference(buf->bo);
 }
 
 void drm_cleanup(struct modeset_dev *list)
@@ -138,26 +138,24 @@ static int _find_crtc(struct modeset_dev *list, drmModeRes *res, drmModeConnecto
 static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint32_t w, uint32_t h, bool map_fb)
 {
 	uint32_t handles[4] = {0}, pitches[4] = {0}, offsets[4] = {0};
-	struct drm_mode_create_dumb creq;
-	struct drm_mode_map_dumb mreq;
-	struct drm_mode_destroy_dumb dreq;
+	unsigned long stride, size;
+	drm_intel_bo *bo;
 	int ret;
 
-	memset(&creq, 0, sizeof(creq));
-	creq.width = w;
-	creq.height = h;
-	creq.bpp = 32;
+	stride = w * 32;
+	size = stride * h;
 
-	ret = drmIoctl(dev->drm_fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq);
-	if (ret < 0) {
-		fprintf(stderr, "cannot create dumb buffer (%d): %m\n", errno);
+	bo = drm_intel_bo_alloc(bufmgr, "buffer", size, 0);
+	if (!bo) {
+		fprintf(stderr, "cannot create buffer (%d): %m\n", errno);
 		return -errno;
 	}
-	buf->stride = creq.pitch;
-	buf->size = creq.size;
-	buf->handle = creq.handle;
-	buf->width = creq.width;
-	buf->height = creq.height;
+	buf->stride = stride;
+	buf->size = bo->size;
+	buf->handle = bo->handle;
+	buf->width = w;
+	buf->height = h;
+	buf->bo = bo;
 
 	if (map_fb) {
 		handles[0] = buf->handle;
@@ -173,22 +171,13 @@ static int _create_buffer(struct modeset_dev *dev, struct modeset_buf *buf, uint
 		}
 	}
 
-	memset(&mreq, 0, sizeof(mreq));
-	mreq.handle = buf->handle;
-	ret = drmIoctl(dev->drm_fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq);
+	ret = drm_intel_gem_bo_map_gtt(bo);
 	if (ret) {
-		fprintf(stderr, "cannot map dumb buffer (%d): %m\n", errno);
+		fprintf(stderr, "cannot map buffer (%d): %m\n", errno);
 		ret = -errno;
 		goto err_mmap;
 	}
-
-	buf->map = mmap(0, buf->size, PROT_READ | PROT_WRITE, MAP_SHARED,
-					dev->drm_fd, mreq.offset);
-	if (buf->map == MAP_FAILED) {
-		fprintf(stderr, "cannot mmap dumb buffer (%d): %m\n", errno);
-		ret = -errno;
-		goto err_mmap;
-	}
+	buf->map = bo->virtual;
 
 	memset(buf->map, 0x77, buf->size);
 	return 0;
@@ -197,9 +186,7 @@ err_mmap:
 	if (map_fb)
 		drmModeRmFB(dev->drm_fd, buf->fb);
 err_map_to_fb:
-	memset(&dreq, 0, sizeof(dreq));
-	dreq.handle = buf->handle;
-	drmIoctl(dev->drm_fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+	drm_intel_bo_unreference(bo);
 	return ret;
 }
 
@@ -350,5 +337,19 @@ struct modeset_dev *drm_modeset_with_mode(int fd, const drmModeModeInfo *mode)
 
 struct modeset_dev *drm_modeset(int fd)
 {
+	int ret = drmIoctl(fd, DRM_IOCTL_SET_MASTER, NULL);
+
+	if (ret) {
+		fprintf(stderr, "Not able to turn into master | ret=%i errno=%i\n", ret, errno);
+		return NULL;
+	}
+
+	bufmgr = drm_intel_bufmgr_gem_init(fd, 4096);
+	if (!bufmgr) {
+		fprintf(stderr, "Unable to initialize drm_intel_bufmgr_gem_init() | errno=%i\n", errno);
+		return NULL;
+	}
+
+	drm_intel_bufmgr_gem_enable_reuse(bufmgr);
 	return drm_modeset_with_mode(fd, NULL);
 }

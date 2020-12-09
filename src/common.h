@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <xf86drm.h>
 #include <xf86drmMode.h>
+#include "intel_bufmgr.h"
 
 #define UNUSED __attribute__((unused))
 
@@ -23,6 +24,7 @@ struct modeset_buf {
 	uint32_t fb;
 
 	bool frontbuffer;
+	drm_intel_bo *bo;
 };
 
 struct modeset_dev {
