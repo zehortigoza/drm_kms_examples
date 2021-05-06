@@ -192,6 +192,7 @@ blt_draw_rect(int drm_fd, struct gem_buffer *image_buffer, struct drm_clip_rect 
 
     blt_switch_tiling(&batch_buffer, true);
 
+    // BSpec: 6542
     val = 0x2 << 29;// client
     val |= 0x50 << 22;// opcode
     val |= 0x1 << 21; // write alpha
