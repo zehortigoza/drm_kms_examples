@@ -1,10 +1,6 @@
 CFLAGS  = -g -Wall -Wextra -s -O3
-#Ubuntu
-#CFLAGS  += `pkg-config --cflags libdrm libdrm_intel`
-#LDFLAGS += `pkg-config --libs libdrm libdrm_intel`
-#Arch
-CFLAGS  += `pkg-config --cflags libdrm libkms libdrm_intel`
-LDFLAGS += `pkg-config --libs libdrm libkms libdrm_intel`
+CFLAGS  += `pkg-config --cflags libdrm libdrm_intel`
+LDFLAGS += `pkg-config --libs libdrm libdrm_intel`
 COMMON = src/common.o src/debugfs.o
 
 all: frontbuffer_drawing.bin page_flip.bin page_flip2.bin page_flip3.bin page_flip3_psr2.bin cursor.bin page_flip_force_resolution.bin frontbuffer_drawing2.bin frontbuffer_drawing3.bin frontbuffer_drawing3_psr2.bin read_debugfs.bin submission.bin
@@ -49,5 +45,6 @@ submission.bin: src/gem_submission/submission.o src/gem_submission/lib.o
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm src/*.o
-	rm *.bin
+	rm -rf src/*.o
+	rm -rf src/gem_submission/*.o
+	rm -rf *.bin
